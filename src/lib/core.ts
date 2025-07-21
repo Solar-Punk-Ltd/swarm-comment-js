@@ -32,6 +32,7 @@ export class SwarmComment {
   private fetchProcessRunning = false;
   private stopFetch = false;
   private reactionIndex = -1n;
+  private isSending = false;
 
   constructor(settings: CommentSettings) {
     const signer = new PrivateKey(remove0x(settings.user.privateKey));
@@ -74,7 +75,7 @@ export class SwarmComment {
   public orderMessages(messages: any[]): any[] {
     return messages.sort((a, b) => a.timestamp - b.timestamp);
   }
-  // TODO: index in case of reactions ?
+
   public async sendMessage(
     message: string,
     type: MessageType,
@@ -82,15 +83,15 @@ export class SwarmComment {
     id?: string,
     prevState?: MessageData[],
   ): Promise<void> {
-    const nextIndex = this.userDetails.ownIndex === -1n ? 0n : this.userDetails.ownIndex + 1n;
-    const messageObj = {
+    this.isSending = true;
+
+    let messageObj = {
       id: id || uuidv4(),
       username: this.userDetails.nickname,
       address: this.userDetails.ownAddress,
       topic: Topic.fromString(this.swarmSettings.topic).toString(),
       signature: this.getSignature(message),
       timestamp: Date.now(),
-      index: Number(nextIndex),
       type,
       targetMessageId,
       message,
@@ -103,6 +104,10 @@ export class SwarmComment {
         const reactionFeedId = getReactionFeedId(Topic.fromString(this.swarmSettings.topic).toString()).toString();
         const reactionNextIndex =
           this.reactionIndex === -1n ? FeedIndex.fromBigInt(0n) : FeedIndex.fromBigInt(this.reactionIndex + 1n);
+        messageObj = {
+          ...messageObj,
+          index: Number(reactionNextIndex),
+        };
 
         const newReactionState = updateReactions(prevState || [], messageObj) || [];
 
@@ -115,6 +120,12 @@ export class SwarmComment {
 
         this.reactionIndex = reactionNextIndex.toBigInt();
       } else {
+        const nextIndex = this.userDetails.ownIndex === -1n ? 0n : this.userDetails.ownIndex + 1n;
+        messageObj = {
+          ...messageObj,
+          index: Number(nextIndex),
+        };
+
         const comment = await writeCommentToIndex(messageObj, FeedIndex.fromBigInt(BigInt(nextIndex)), {
           stamp: this.swarmSettings.stamp,
           signer: this.signer,
@@ -131,6 +142,8 @@ export class SwarmComment {
     } catch (error) {
       this.emitter.emit(EVENTS.MESSAGE_REQUEST_ERROR, messageObj);
       this.errorHandler.handleError(error, 'Comment.sendMessage');
+    } finally {
+      this.isSending = false;
     }
   }
 
@@ -185,6 +198,8 @@ export class SwarmComment {
   }
 
   private async fetchLatestMessage(): Promise<void> {
+    if (this.isSending) return;
+
     try {
       const { data, index } = await this.history.fetchLatestMessage();
 

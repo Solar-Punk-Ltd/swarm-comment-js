@@ -1,6 +1,6 @@
 {
   "name": "@solarpunkltd/swarm-comment-js",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "JS library for commenting on Swarm",
   "main": "dist/index.js",
   "module": "dist/index.esm.js",
@@ -28,8 +28,8 @@
     "mine": "npm run build:mine && node scriptsDist/mine.js"
   },
   "dependencies": {
-    "@ethersphere/bee-js": "^9.0.3",
-    "@solarpunkltd/comment-system": "^1.8.2",
+    "@ethersphere/bee-js": "^9.6.0",
+    "@solarpunkltd/comment-system": "^1.8.3",
     "cafe-utility": "^30.0.1",
     "uuid": "^11.0.3",
     "zod": "^3.24.1"
