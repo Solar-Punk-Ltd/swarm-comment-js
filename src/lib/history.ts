@@ -2,7 +2,6 @@ import { FeedIndex, Topic } from '@ethersphere/bee-js';
 import {
   getReactionFeedId,
   isNotFoundError,
-  isReaction,
   MessageData,
   readCommentsInRange,
   readReactionsWithIndex,
@@ -103,11 +102,6 @@ export class SwarmHistory {
     if (prevIndex !== undefined && new FeedIndex(reactionState.nextIndex).toBigInt() > prevIndex) {
       for (let ix = 0; ix < reactionState.messages.length; ix++) {
         const r = reactionState.messages[ix];
-        // TODO: probably not needed as readReactionsWithIndex should filter out invalid reactions
-        if (!isReaction(r)) {
-          this.logger.debug('Invalid user reaction detected:', r);
-          continue;
-        }
 
         this.emitter.emit(EVENTS.MESSAGE_RECEIVED, r);
       }
@@ -116,7 +110,7 @@ export class SwarmHistory {
     return new FeedIndex(reactionState.nextIndex);
   }
 
-  public async fetchLatestMessage(index?: bigint): Promise<{ data: MessageData; index: FeedIndex }> {
+  public async fetchLatestMessage(): Promise<{ data: MessageData; index: FeedIndex }> {
     const latestComment = await readSingleComment(undefined, {
       identifier: Topic.fromString(this.swarmSettings.topic).toString(),
       address: this.swarmSettings.address,
@@ -124,7 +118,7 @@ export class SwarmHistory {
     });
 
     if (!latestComment || Object.keys(latestComment).length === 0) {
-      this.logger.debug(`No comment found at index: ${index}`);
+      this.logger.debug(`No comment found in history`);
       return { data: {} as MessageData, index: FeedIndex.fromBigInt(-1n) };
     }
 
