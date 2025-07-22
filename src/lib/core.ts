@@ -83,8 +83,6 @@ export class SwarmComment {
     id?: string,
     prevState?: MessageData[],
   ): Promise<void> {
-    this.isSending = true;
-
     let messageObj = {
       id: id || uuidv4(),
       username: this.userDetails.nickname,
@@ -101,6 +99,9 @@ export class SwarmComment {
       this.emitter.emit(EVENTS.MESSAGE_REQUEST_INITIATED, messageObj);
 
       if (type === MessageType.REACTION) {
+        // to avoid indexing issues, note: it slows down the sending process
+        await this.fetchLatestReactions();
+
         const reactionFeedId = getReactionFeedId(Topic.fromString(this.swarmSettings.topic).toString()).toString();
         const reactionNextIndex =
           this.reactionIndex === -1n ? FeedIndex.fromBigInt(0n) : FeedIndex.fromBigInt(this.reactionIndex + 1n);
@@ -110,6 +111,7 @@ export class SwarmComment {
         };
 
         const newReactionState = updateReactions(prevState || [], messageObj) || [];
+        this.isSending = true;
 
         await writeReactionsToIndex(newReactionState, reactionNextIndex, {
           stamp: this.swarmSettings.stamp,
@@ -120,11 +122,15 @@ export class SwarmComment {
 
         this.reactionIndex = reactionNextIndex.toBigInt();
       } else {
+        // to avoid indexing issues, note: it slows down the sending process
+        await this.fetchLatestMessage();
+
         const nextIndex = this.userDetails.ownIndex === -1n ? 0n : this.userDetails.ownIndex + 1n;
         messageObj = {
           ...messageObj,
           index: Number(nextIndex),
         };
+        this.isSending = true;
 
         const comment = await writeCommentToIndex(messageObj, FeedIndex.fromBigInt(BigInt(nextIndex)), {
           stamp: this.swarmSettings.stamp,
