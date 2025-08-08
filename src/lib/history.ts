@@ -14,16 +14,19 @@ import { EventEmitter } from '../utils/eventEmitter';
 import { Logger } from '../utils/logger';
 import { validateUserSignature } from '../utils/validation';
 
-import { COMMENTS_TO_READ, EVENTS } from './constants';
+import { COMMENTS_TO_READ, EVENTS, FEED_INDEX_ZERO } from './constants';
 
 export class SwarmHistory {
   private logger = Logger.getInstance();
   private errorHandler = ErrorHandler.getInstance();
   private startIndex = -1n;
 
-  constructor(private swarmSettings: CommentSettingsSwarm, private emitter: EventEmitter) {}
+  constructor(
+    private swarmSettings: CommentSettingsSwarm,
+    private emitter: EventEmitter,
+  ) {}
 
-  public async init(): Promise<void> {
+  public async init(initPrevState: boolean): Promise<void> {
     try {
       const { data, index } = await this.fetchLatestMessage();
 
@@ -32,6 +35,11 @@ export class SwarmHistory {
       }
 
       this.startIndex = index.toBigInt();
+
+      if (!initPrevState) {
+        this.logger.debug('Skipping history fetching');
+        return;
+      }
 
       return await this.fetchPreviousMessageState();
     } catch (error) {
@@ -96,7 +104,7 @@ export class SwarmHistory {
     });
 
     if (!reactionState || !reactionState.messages || reactionState.messages.length === 0) {
-      return FeedIndex.fromBigInt(0n);
+      return FEED_INDEX_ZERO;
     }
 
     if (prevIndex !== undefined && new FeedIndex(reactionState.nextIndex).toBigInt() > prevIndex) {
@@ -119,15 +127,15 @@ export class SwarmHistory {
 
     if (!latestComment || Object.keys(latestComment).length === 0) {
       this.logger.debug(`No comment found in history`);
-      return { data: {} as MessageData, index: FeedIndex.fromBigInt(-1n) };
+      return { data: {} as MessageData, index: FeedIndex.MINUS_ONE };
     }
 
     if (!validateUserSignature(latestComment.message)) {
       this.logger.warn('Invalid signature during fetching');
-      return { data: {} as MessageData, index: FeedIndex.fromBigInt(-1n) };
+      return { data: {} as MessageData, index: FeedIndex.MINUS_ONE };
     }
 
-    return { data: latestComment.message, index: FeedIndex.fromBigInt(BigInt(latestComment.message.index)) };
+    return { data: latestComment.message, index: new FeedIndex(latestComment.message.index) };
   }
 
   public hasPreviousMessages(): boolean {

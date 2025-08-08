@@ -16,7 +16,7 @@ import { remove0x, retryAwaitableAsync } from '../utils/common';
 import { ErrorHandler } from '../utils/error';
 import { EventEmitter } from '../utils/eventEmitter';
 
-import { EVENTS } from './constants';
+import { EVENTS, FEED_INDEX_ZERO } from './constants';
 import { SwarmHistory } from './history';
 
 export class SwarmComment {
@@ -57,8 +57,8 @@ export class SwarmComment {
     this.history = new SwarmHistory(this.swarmSettings, this.emitter);
   }
 
-  public start(): void {
-    this.init();
+  public start(initPrevState: boolean): void {
+    this.init(initPrevState);
     this.startMessagesFetchProcess();
   }
 
@@ -104,10 +104,10 @@ export class SwarmComment {
 
         const reactionFeedId = getReactionFeedId(Topic.fromString(this.swarmSettings.topic).toString()).toString();
         const reactionNextIndex =
-          this.reactionIndex === -1n ? FeedIndex.fromBigInt(0n) : FeedIndex.fromBigInt(this.reactionIndex + 1n);
+          this.reactionIndex === -1n ? FEED_INDEX_ZERO : FeedIndex.fromBigInt(this.reactionIndex + 1n);
         messageObj = {
           ...messageObj,
-          index: Number(reactionNextIndex),
+          index: reactionNextIndex.toString(),
         };
 
         const newReactionState = updateReactions(prevState || [], messageObj) || [];
@@ -128,18 +128,18 @@ export class SwarmComment {
         const nextIndex = this.userDetails.ownIndex === -1n ? 0n : this.userDetails.ownIndex + 1n;
         messageObj = {
           ...messageObj,
-          index: Number(nextIndex),
+          index: nextIndex.toString(),
         };
         this.isSending = true;
 
-        const comment = await writeCommentToIndex(messageObj, FeedIndex.fromBigInt(BigInt(nextIndex)), {
+        const comment = await writeCommentToIndex(messageObj, FeedIndex.fromBigInt(nextIndex), {
           stamp: this.swarmSettings.stamp,
           signer: this.signer,
           identifier: Topic.fromString(this.swarmSettings.topic).toString(),
           beeApiUrl: this.swarmSettings.beeUrl,
         });
 
-        await this.verifyWriteSuccess(FeedIndex.fromBigInt(BigInt(nextIndex)), comment);
+        await this.verifyWriteSuccess(FeedIndex.fromBigInt(nextIndex), comment);
 
         this.userDetails.ownIndex = nextIndex;
       }
@@ -163,11 +163,11 @@ export class SwarmComment {
     }
   }
 
-  private async init(): Promise<void> {
+  private async init(initPrevState: boolean): Promise<void> {
     try {
       this.emitter.emit(EVENTS.LOADING_INIT, true);
 
-      const [ownIndexResult] = await Promise.allSettled([this.initOwnIndex(), this.history.init()]);
+      const [ownIndexResult] = await Promise.allSettled([this.initOwnIndex(), this.history.init(initPrevState)]);
 
       if (ownIndexResult.status === 'rejected') {
         throw ownIndexResult.reason;

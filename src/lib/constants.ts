@@ -1,3 +1,5 @@
+import { FeedIndex } from '@ethersphere/bee-js';
+
 export const EVENTS = {
   LOADING_INIT: 'loadingInit',
   LOADING_PREVIOUS_MESSAGES: 'loadingPreviousMessages',
@@ -9,3 +11,4 @@ export const EVENTS = {
 };
 
 export const COMMENTS_TO_READ = 9n;
+export const FEED_INDEX_ZERO = FeedIndex.fromBigInt(0n);
