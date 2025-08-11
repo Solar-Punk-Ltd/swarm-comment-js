@@ -26,8 +26,14 @@ export class SwarmHistory {
     private emitter: EventEmitter,
   ) {}
 
-  public async init(initPrevState: boolean): Promise<void> {
+  public async init(startIx?: bigint): Promise<void> {
     try {
+      if (startIx !== undefined) {
+        this.startIndex = startIx;
+        this.logger.debug(`Skipping history fetching, start index: ${this.startIndex.toString()}`);
+        return;
+      }
+
       const { data, index } = await this.fetchLatestMessage();
 
       if (index.toBigInt() > -1n) {
@@ -36,12 +42,6 @@ export class SwarmHistory {
 
       this.startIndex = index.toBigInt();
 
-      if (!initPrevState) {
-        this.logger.debug('Skipping history fetching');
-        return;
-      }
-
-      return await this.fetchPreviousMessageState();
     } catch (error) {
       if (isNotFoundError(error)) {
         this.logger.debug('No latest comment found for message state initialization');

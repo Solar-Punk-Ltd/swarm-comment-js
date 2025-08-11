@@ -16,7 +16,7 @@ import { remove0x, retryAwaitableAsync } from '../utils/common';
 import { ErrorHandler } from '../utils/error';
 import { EventEmitter } from '../utils/eventEmitter';
 
-import { EVENTS, FEED_INDEX_ZERO } from './constants';
+import { DEFAULT_POLL_INTERVAL, EVENTS, FEED_INDEX_ZERO, MINIMUM_POLL_INTERVAL } from './constants';
 import { SwarmHistory } from './history';
 
 export class SwarmComment {
@@ -35,12 +35,12 @@ export class SwarmComment {
   private isSending = false;
 
   constructor(settings: CommentSettings) {
-    const signer = new PrivateKey(remove0x(settings.user.privateKey));
     this.emitter = new EventEmitter();
 
+    const userSigner = new PrivateKey(remove0x(settings.user.privateKey));
     this.userDetails = {
       privateKey: settings.user.privateKey,
-      ownAddress: signer.publicKey().address().toString(),
+      ownAddress: userSigner.publicKey().address().toString(),
       nickname: settings.user.nickname,
       ownIndex: -1n,
     };
@@ -52,13 +52,18 @@ export class SwarmComment {
       stamp: settings.infra.stamp || '0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef', // placeholder stamp if smart gateway is used
       topic: settings.infra.topic,
       address: this.signer.publicKey().address().toString(),
+      pollInterval: settings.infra.pollInterval || DEFAULT_POLL_INTERVAL,
     };
+
+    if (this.swarmSettings.pollInterval < MINIMUM_POLL_INTERVAL) {
+      this.swarmSettings.pollInterval = MINIMUM_POLL_INTERVAL;
+    }
 
     this.history = new SwarmHistory(this.swarmSettings, this.emitter);
   }
 
-  public start(initPrevState: boolean): void {
-    this.init(initPrevState);
+  public start(startIx?: bigint, latestIx?: bigint): void {
+    this.init(startIx, latestIx);
     this.startMessagesFetchProcess();
   }
 
@@ -66,6 +71,7 @@ export class SwarmComment {
     this.emitter.cleanAll();
     this.stopMessagesFetchProcess();
     this.history.cleanup();
+    this.reactionIndex = -1n;
   }
 
   public getEmitter(): EventEmitter {
@@ -163,11 +169,11 @@ export class SwarmComment {
     }
   }
 
-  private async init(initPrevState: boolean): Promise<void> {
+  private async init(startIx?: bigint, latestIx?: bigint): Promise<void> {
     try {
       this.emitter.emit(EVENTS.LOADING_INIT, true);
 
-      const [ownIndexResult] = await Promise.allSettled([this.initOwnIndex(), this.history.init(initPrevState)]);
+      const [ownIndexResult] = await Promise.allSettled([this.initOwnIndex(latestIx), this.history.init(startIx)]);
 
       if (ownIndexResult.status === 'rejected') {
         throw ownIndexResult.reason;
@@ -183,7 +189,12 @@ export class SwarmComment {
   }
 
   // TODO: fetch latest index and comment and start to load prev from there
-  private async initOwnIndex(): Promise<void> {
+  private async initOwnIndex(latestIx?: bigint): Promise<void> {
+    if (latestIx !== undefined) {
+      this.userDetails.ownIndex = latestIx;
+      return;
+    }
+
     const RETRY_COUNT = 10;
     const DELAY = 1000;
 
@@ -199,7 +210,7 @@ export class SwarmComment {
     );
 
     if (comment?.message?.index) {
-      this.userDetails.ownIndex = BigInt(comment.message.index);
+      this.userDetails.ownIndex = new FeedIndex(comment.message.index).toBigInt();
     }
   }
 
@@ -209,8 +220,10 @@ export class SwarmComment {
     try {
       const { data, index } = await this.history.fetchLatestMessage();
 
-      this.userDetails.ownIndex = index.toBigInt();
-      this.emitter.emit(EVENTS.MESSAGE_RECEIVED, data);
+      if (this.userDetails.ownIndex < index.toBigInt()) {
+        this.userDetails.ownIndex = index.toBigInt();
+        this.emitter.emit(EVENTS.MESSAGE_RECEIVED, data);
+      }
     } catch (err) {
       this.errorHandler.handleError(err, 'Comment.fetchLatestMessage');
     }
@@ -219,7 +232,7 @@ export class SwarmComment {
   private async fetchLatestReactions(index?: bigint): Promise<void> {
     try {
       const reactionNextIndex = (await this.history.fetchLatestReactionState(index, this.reactionIndex)).toBigInt();
-      if (reactionNextIndex > this.reactionIndex) {
+      if (reactionNextIndex - 1n > this.reactionIndex) {
         this.reactionIndex = reactionNextIndex - 1n;
       }
     } catch (err) {
@@ -261,7 +274,7 @@ export class SwarmComment {
       }
 
       await Promise.allSettled([this.fetchLatestMessage(), this.fetchLatestReactions(this.reactionIndex + 1n)]);
-      setTimeout(poll, 500);
+      setInterval(poll, this.swarmSettings.pollInterval);
     };
 
     poll();

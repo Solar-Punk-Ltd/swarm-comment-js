@@ -9,6 +9,7 @@ export interface CommentSettings {
     beeUrl: string;
     stamp?: string;
     topic: string;
+    pollInterval?: number;
   };
 }
 
@@ -25,4 +26,5 @@ export interface CommentSettingsSwarm {
   stamp: string;
   topic: string;
   address: string;
+  pollInterval: number;
 }

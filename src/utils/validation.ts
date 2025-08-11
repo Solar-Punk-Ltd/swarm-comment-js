@@ -1,17 +1,23 @@
 import { Signature } from '@ethersphere/bee-js';
+import { MessageData } from '@solarpunkltd/comment-system';
 import { Binary } from 'cafe-utility';
 
 import { Logger } from './logger';
 
 const logger = Logger.getInstance();
 
-export function validateUserSignature(validatedUser: any): boolean {
+export function validateUserSignature(data: MessageData): boolean {
+  if (data.isLegacy) {
+    logger.debug('Legacy user comment detected, skipping signature validation');
+    return true;
+  }
+
   try {
     const message = {
-      username: validatedUser.username,
-      address: validatedUser.address,
-      timestamp: validatedUser.timestamp,
-      message: validatedUser.message,
+      username: data.username,
+      address: data.address,
+      timestamp: data.timestamp,
+      message: data.message,
     };
 
     const ENCODER = new TextEncoder();
@@ -20,9 +26,9 @@ export function validateUserSignature(validatedUser: any): boolean {
       Binary.keccak256(ENCODER.encode(JSON.stringify(message))),
     );
 
-    const isValidSig = new Signature(validatedUser.signature).isValid(digest, validatedUser.address);
+    const isValidSig = data.signature !== undefined && new Signature(data.signature).isValid(digest, data.address);
 
-    if (isValidSig) {
+    if (!isValidSig) {
       throw new Error('Signature verification failed!');
     }
 

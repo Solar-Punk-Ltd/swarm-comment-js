@@ -10,5 +10,7 @@ export const EVENTS = {
   CRITICAL_ERROR: 'criticalError',
 };
 
+export const DEFAULT_POLL_INTERVAL = 2000;
+export const MINIMUM_POLL_INTERVAL = 500;
 export const COMMENTS_TO_READ = 9n;
 export const FEED_INDEX_ZERO = FeedIndex.fromBigInt(0n);
