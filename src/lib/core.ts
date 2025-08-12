@@ -209,8 +209,8 @@ export class SwarmComment {
       DELAY,
     );
 
-    if (comment?.message?.index) {
-      this.userDetails.ownIndex = new FeedIndex(comment.message.index).toBigInt();
+    if (comment?.index) {
+      this.userDetails.ownIndex = new FeedIndex(comment.index).toBigInt();
     }
   }
 
@@ -255,9 +255,9 @@ export class SwarmComment {
       throw new Error('Comment check failed, empty response!');
     }
 
-    if (commentCheck.message.id !== comment.id || commentCheck.message.timestamp !== comment.timestamp) {
-      throw new Error(`comment check failed, expected "${comment.message}", got: "${commentCheck.message.message}".
-                Expected timestamp: ${comment.timestamp}, got: ${commentCheck.message.timestamp}`);
+    if (commentCheck.id !== comment.id || commentCheck.timestamp !== comment.timestamp) {
+      throw new Error(`comment check failed, expected "${comment.message}", got: "${commentCheck.message}".
+                Expected timestamp: ${comment.timestamp}, got: ${commentCheck.timestamp}`);
     }
   }
 
@@ -274,7 +274,7 @@ export class SwarmComment {
       }
 
       await Promise.allSettled([this.fetchLatestMessage(), this.fetchLatestReactions(this.reactionIndex + 1n)]);
-      setInterval(poll, this.swarmSettings.pollInterval);
+      setTimeout(poll, this.swarmSettings.pollInterval);
     };
 
     poll();

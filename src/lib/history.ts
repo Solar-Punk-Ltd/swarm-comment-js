@@ -69,7 +69,7 @@ export class SwarmHistory {
 
     const comments = await readCommentsInRange(
       FeedIndex.fromBigInt(newStartIndex),
-      FeedIndex.fromBigInt(this.startIndex),
+      FeedIndex.fromBigInt(this.startIndex - 1n),
       {
         identifier: Topic.fromString(this.swarmSettings.topic).toString(),
         address: this.swarmSettings.address,
@@ -130,12 +130,12 @@ export class SwarmHistory {
       return { data: {} as MessageData, index: FeedIndex.MINUS_ONE };
     }
 
-    if (!validateUserSignature(latestComment.message)) {
+    if (!validateUserSignature(latestComment)) {
       this.logger.warn('Invalid signature during fetching');
       return { data: {} as MessageData, index: FeedIndex.MINUS_ONE };
     }
 
-    return { data: latestComment.message, index: new FeedIndex(latestComment.message.index) };
+    return { data: latestComment, index: new FeedIndex(latestComment.index) };
   }
 
   public hasPreviousMessages(): boolean {
