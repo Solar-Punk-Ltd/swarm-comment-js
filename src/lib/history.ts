@@ -26,11 +26,11 @@ export class SwarmHistory {
     private emitter: EventEmitter,
   ) {}
 
-  public async init(startIx?: bigint): Promise<void> {
+  public async init(firstIndex?: bigint): Promise<void> {
     try {
-      if (startIx !== undefined) {
-        this.startIndex = startIx;
-        this.logger.debug(`Skipping history fetching, start index: ${this.startIndex.toString()}`);
+      if (firstIndex !== undefined) {
+        this.startIndex = firstIndex;
+        this.logger.debug(`Skipping history fetching due to preloading, first index: ${this.startIndex}`);
         return;
       }
 
@@ -43,7 +43,7 @@ export class SwarmHistory {
       this.startIndex = index.toBigInt();
     } catch (error) {
       if (isNotFoundError(error)) {
-        this.logger.debug('No latest comment found for message state initialization');
+        this.logger.debug('No comment found during message state initialization');
         return;
       }
 
@@ -91,6 +91,13 @@ export class SwarmHistory {
   }
 
   public async fetchLatestReactionState(index?: bigint, prevIndex?: bigint): Promise<FeedIndex> {
+    this.logger.debug(
+      'Fetching reaction state at: ',
+      index?.toString() || 'latest',
+      ' previous index: ',
+      prevIndex?.toString(),
+    );
+
     const reactionState = await readReactionsWithIndex(
       index === undefined ? undefined : FeedIndex.fromBigInt(index),
       this.reactionOptions,

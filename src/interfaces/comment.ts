@@ -17,3 +17,9 @@ export interface CommentSettingsUser {
   nickname: string;
   ownIndex: bigint;
 }
+
+export interface PreloadOptions {
+  firstIndex?: bigint;
+  latestIndex?: bigint;
+  reactionIndex?: bigint;
+}

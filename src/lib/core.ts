@@ -12,7 +12,7 @@ import {
 } from '@solarpunkltd/comment-system';
 import { v4 as uuidv4 } from 'uuid';
 
-import { CommentSettings, CommentSettingsUser } from '../interfaces';
+import { CommentSettings, CommentSettingsUser, PreloadOptions } from '../interfaces';
 import { remove0x, retryAwaitableAsync } from '../utils/common';
 import { ErrorHandler } from '../utils/error';
 import { EventEmitter } from '../utils/eventEmitter';
@@ -77,8 +77,8 @@ export class SwarmComment {
     this.history = new SwarmHistory(this.commentOptions, this.reactionOptions, this.emitter);
   }
 
-  public start(startIx?: bigint, latestIx?: bigint): void {
-    this.init(startIx, latestIx);
+  public start(options?: PreloadOptions): void {
+    this.init(options);
     this.startMessagesFetchProcess();
   }
 
@@ -175,20 +175,20 @@ export class SwarmComment {
     }
   }
 
-  private async init(startIx?: bigint, latestIx?: bigint, reactionIx?: bigint): Promise<void> {
+  private async init(options?: PreloadOptions): Promise<void> {
     try {
       this.emitter.emit(EVENTS.LOADING_INIT, true);
 
-      const [ownIndexResult] = await Promise.allSettled([this.initOwnIndex(latestIx), this.history.init(startIx)]);
+      const [ownIndexResult] = await Promise.allSettled([this.initOwnIndex(options?.latestIndex), this.history.init(options?.firstIndex)]);
 
       if (ownIndexResult.status === 'rejected') {
         throw ownIndexResult.reason;
       }
 
-      if (reactionIx === undefined) {
+      if (options?.reactionIndex === undefined) {
         await this.fetchLatestReactions();
       } else {
-        this.reactionIndex = reactionIx;
+        this.reactionIndex = options.reactionIndex;
       }
 
       this.emitter.emit(EVENTS.LOADING_INIT, false);
@@ -198,9 +198,9 @@ export class SwarmComment {
     }
   }
 
-  private async initOwnIndex(latestIx?: bigint): Promise<void> {
-    if (latestIx !== undefined) {
-      this.userDetails.ownIndex = latestIx;
+  private async initOwnIndex(latestIndex?: bigint): Promise<void> {
+    if (latestIndex !== undefined) {
+      this.userDetails.ownIndex = latestIndex;
       return;
     }
 
@@ -257,15 +257,15 @@ export class SwarmComment {
       return;
     }
 
-    const commentCheck = await readSingleComment(index, this.commentOptions);
+    const dataCheck = await readSingleComment(index, this.commentOptions);
 
-    if (!commentCheck) {
+    if (!dataCheck) {
       throw new Error('Comment check failed, empty response!');
     }
 
-    if (commentCheck.id !== data.id || commentCheck.timestamp !== data.timestamp) {
-      throw new Error(`comment check failed, expected "${data.message}", got: "${commentCheck.message}".
-                Expected timestamp: ${data.timestamp}, got: ${commentCheck.timestamp}`);
+    if (dataCheck.id !== data.id || dataCheck.timestamp !== data.timestamp) {
+      throw new Error(`Write verification failed, expected "${data.message}", got: "${dataCheck.message}".
+                Expected timestamp: ${data.timestamp}, got: ${dataCheck.timestamp}`);
     }
   }
 
