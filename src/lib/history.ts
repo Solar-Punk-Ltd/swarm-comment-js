@@ -100,7 +100,6 @@ export class SwarmHistory {
       return FEED_INDEX_ZERO;
     }
 
-    // todo: test  prevIndex + 1n vs prevIndex
     if (prevIndex !== undefined && new FeedIndex(reactionState.nextIndex).toBigInt() > prevIndex + 1n) {
       for (let ix = 0; ix < reactionState.messages.length; ix++) {
         const r = reactionState.messages[ix];

@@ -198,7 +198,6 @@ export class SwarmComment {
     }
   }
 
-  // TODO: fetch latest index and comment and start to load prev from there
   private async initOwnIndex(latestIx?: bigint): Promise<void> {
     if (latestIx !== undefined) {
       this.userDetails.ownIndex = latestIx;
@@ -254,7 +253,7 @@ export class SwarmComment {
       throw new Error('Write failed, empty response!');
     }
 
-    if(!data){
+    if (!data) {
       return;
     }
 
@@ -276,7 +275,7 @@ export class SwarmComment {
     this.fetchProcessRunning = true;
     this.stopFetch = false;
 
-    const poll = async () => {
+    const poll = async (): Promise<void> => {
       if (this.stopFetch) {
         this.fetchProcessRunning = false;
         return;
