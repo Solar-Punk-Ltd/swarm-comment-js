@@ -28,8 +28,8 @@
     "mine": "npm run build:mine && node scriptsDist/mine.js"
   },
   "dependencies": {
-    "@ethersphere/bee-js": "^9.7.0",
-    "@solarpunkltd/comment-system": "^1.8.5",
+    "@ethersphere/bee-js": "^9.8.1",
+    "@solarpunkltd/comment-system": "^1.8.7",
     "cafe-utility": "^31.1.1",
     "uuid": "^11.0.3",
     "zod": "^4.0.15"

@@ -1,14 +1,13 @@
-import { FeedIndex, Topic } from '@ethersphere/bee-js';
+import { FeedIndex } from '@ethersphere/bee-js';
 import {
-  getReactionFeedId,
   isNotFoundError,
   MessageData,
+  Options,
   readCommentsInRange,
   readReactionsWithIndex,
   readSingleComment,
 } from '@solarpunkltd/comment-system';
 
-import { CommentSettingsSwarm } from '../interfaces';
 import { ErrorHandler } from '../utils/error';
 import { EventEmitter } from '../utils/eventEmitter';
 import { Logger } from '../utils/logger';
@@ -22,7 +21,8 @@ export class SwarmHistory {
   private startIndex = -1n;
 
   constructor(
-    private swarmSettings: CommentSettingsSwarm,
+    private commentOptions: Options,
+    private reactionOptions: Options,
     private emitter: EventEmitter,
   ) {}
 
@@ -41,7 +41,6 @@ export class SwarmHistory {
       }
 
       this.startIndex = index.toBigInt();
-
     } catch (error) {
       if (isNotFoundError(error)) {
         this.logger.debug('No latest comment found for message state initialization');
@@ -70,11 +69,7 @@ export class SwarmHistory {
     const comments = await readCommentsInRange(
       FeedIndex.fromBigInt(newStartIndex),
       FeedIndex.fromBigInt(this.startIndex - 1n),
-      {
-        identifier: Topic.fromString(this.swarmSettings.topic).toString(),
-        address: this.swarmSettings.address,
-        beeApiUrl: this.swarmSettings.beeUrl,
-      },
+      this.commentOptions,
     );
 
     if (!comments) {
@@ -96,18 +91,17 @@ export class SwarmHistory {
   }
 
   public async fetchLatestReactionState(index?: bigint, prevIndex?: bigint): Promise<FeedIndex> {
-    const reactionFeedId = getReactionFeedId(Topic.fromString(this.swarmSettings.topic).toString()).toString();
-    const reactionState = await readReactionsWithIndex(index === undefined ? undefined : FeedIndex.fromBigInt(index), {
-      identifier: reactionFeedId,
-      address: this.swarmSettings.address,
-      beeApiUrl: this.swarmSettings.beeUrl,
-    });
+    const reactionState = await readReactionsWithIndex(
+      index === undefined ? undefined : FeedIndex.fromBigInt(index),
+      this.reactionOptions,
+    );
 
-    if (!reactionState || !reactionState.messages || reactionState.messages.length === 0) {
+    if (reactionState.nextIndex === FeedIndex.MINUS_ONE.toString()) {
       return FEED_INDEX_ZERO;
     }
 
-    if (prevIndex !== undefined && new FeedIndex(reactionState.nextIndex).toBigInt() > prevIndex) {
+    // todo: test  prevIndex + 1n vs prevIndex
+    if (prevIndex !== undefined && new FeedIndex(reactionState.nextIndex).toBigInt() > prevIndex + 1n) {
       for (let ix = 0; ix < reactionState.messages.length; ix++) {
         const r = reactionState.messages[ix];
 
@@ -119,13 +113,9 @@ export class SwarmHistory {
   }
 
   public async fetchLatestMessage(): Promise<{ data: MessageData; index: FeedIndex }> {
-    const latestComment = await readSingleComment(undefined, {
-      identifier: Topic.fromString(this.swarmSettings.topic).toString(),
-      address: this.swarmSettings.address,
-      beeApiUrl: this.swarmSettings.beeUrl,
-    });
+    const latestComment = await readSingleComment(undefined, this.commentOptions);
 
-    if (!latestComment || Object.keys(latestComment).length === 0) {
+    if (!latestComment) {
       this.logger.debug(`No comment found in history`);
       return { data: {} as MessageData, index: FeedIndex.MINUS_ONE };
     }

@@ -1,5 +1,3 @@
-import { Bee } from '@ethersphere/bee-js';
-
 export interface CommentSettings {
   user: {
     privateKey: string;
@@ -18,13 +16,4 @@ export interface CommentSettingsUser {
   ownAddress: string;
   nickname: string;
   ownIndex: bigint;
-}
-
-export interface CommentSettingsSwarm {
-  bee: Bee;
-  beeUrl: string;
-  stamp: string;
-  topic: string;
-  address: string;
-  pollInterval: number;
 }
