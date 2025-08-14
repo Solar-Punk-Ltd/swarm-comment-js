@@ -3,11 +3,11 @@ import {
   isNotFoundError,
   MessageData,
   Options,
-  readCommentsInRange,
   readReactionsWithIndex,
   readSingleComment,
 } from '@solarpunkltd/comment-system';
 
+import { fetchMessagesInRange } from '../utils/bee';
 import { ErrorHandler } from '../utils/error';
 import { EventEmitter } from '../utils/eventEmitter';
 import { Logger } from '../utils/logger';
@@ -36,7 +36,8 @@ export class SwarmHistory {
 
       const { data, index } = await this.fetchLatestMessage();
 
-      if (index.toBigInt() > -1n) {
+      if (!index.equals(FeedIndex.MINUS_ONE)) {
+        this.logger.debug(`history latest index: ${index.toBigInt()}`);
         this.emitter.emit(EVENTS.MESSAGE_RECEIVED, data);
       }
 
@@ -59,33 +60,7 @@ export class SwarmHistory {
 
     const newStartIndex = this.startIndex > COMMENTS_TO_READ ? this.startIndex - COMMENTS_TO_READ : 0n;
 
-    this.logger.debug(
-      'Fetching previous messages from: ',
-      newStartIndex.toString(),
-      ' to: ',
-      this.startIndex.toString(),
-    );
-
-    const comments = await readCommentsInRange(
-      FeedIndex.fromBigInt(newStartIndex),
-      FeedIndex.fromBigInt(this.startIndex - 1n),
-      this.commentOptions,
-    );
-
-    if (!comments) {
-      return;
-    }
-
-    for (let ix = 0; ix < comments.length; ix++) {
-      const c = comments[ix];
-
-      if (!validateUserSignature(c)) {
-        this.logger.warn('Invalid signature detected:', c);
-        continue;
-      }
-
-      this.emitter.emit(EVENTS.MESSAGE_RECEIVED, c);
-    }
+    await fetchMessagesInRange(newStartIndex, this.startIndex - 1n, this.emitter, this.commentOptions);
 
     this.startIndex = newStartIndex;
   }
