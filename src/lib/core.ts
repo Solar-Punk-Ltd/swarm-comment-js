@@ -14,7 +14,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 import { CommentSettings, CommentSettingsUser, PreloadOptions } from '../interfaces';
 import { fetchMessagesInRange } from '../utils/bee';
-import { remove0x, retryAwaitableAsync } from '../utils/common';
+import { indexStrToBigint, remove0x, retryAwaitableAsync } from '../utils/common';
 import { ErrorHandler } from '../utils/error';
 import { EventEmitter } from '../utils/eventEmitter';
 import { Logger } from '../utils/logger';
@@ -149,7 +149,7 @@ export class SwarmComment {
         const nextIndex = this.userDetails.ownIndex === -1n ? 0n : this.userDetails.ownIndex + 1n;
         messageObj = {
           ...messageObj,
-          index: nextIndex.toString(),
+          index: FeedIndex.fromBigInt(nextIndex).toString(),
         };
         this.isSending = true;
 
@@ -215,18 +215,20 @@ export class SwarmComment {
       DELAY,
     );
 
-    if (comment?.index) {
-      const fetchedLatestIx = new FeedIndex(comment.index);
+    const parsedIx = indexStrToBigint(comment?.index);
 
-      if (!fetchedLatestIx.equals(FeedIndex.MINUS_ONE) && fetchedLatestIx.toBigInt() > this.userDetails.ownIndex) {
-        const prevOwnIndex = this.userDetails.ownIndex;
-        this.userDetails.ownIndex = fetchedLatestIx.toBigInt();
-        this.logger.debug(
-          `OwnIndex updated from ${prevOwnIndex} as new message(s) found since preloading: ${fetchedLatestIx}, fetching them...`,
-        );
+    if (
+      parsedIx &&
+      !FeedIndex.fromBigInt(parsedIx).equals(FeedIndex.MINUS_ONE) &&
+      parsedIx > this.userDetails.ownIndex
+    ) {
+      const prevOwnIndex = this.userDetails.ownIndex;
+      this.userDetails.ownIndex = parsedIx;
+      this.logger.debug(
+        `OwnIndex updated from ${prevOwnIndex} as new message(s) found since preloading: ${parsedIx}, fetching them...`,
+      );
 
-        await fetchMessagesInRange(prevOwnIndex + 1n, fetchedLatestIx.toBigInt(), this.emitter, this.commentOptions);
-      }
+      await fetchMessagesInRange(prevOwnIndex + 1n, parsedIx, this.emitter, this.commentOptions);
     }
   }
 
@@ -242,13 +244,13 @@ export class SwarmComment {
     if (this.isSending) return;
 
     try {
-      const { data, index } = await this.history.fetchLatestMessage();
+      const { data: comment, index } = await this.history.fetchLatestMessage();
 
       if (!index.equals(FeedIndex.MINUS_ONE) && this.userDetails.ownIndex < index.toBigInt()) {
         this.userDetails.ownIndex = index.toBigInt();
         this.logger.debug(`OwnIndex updated to: ${this.userDetails.ownIndex.toString()}`);
 
-        this.emitter.emit(EVENTS.MESSAGE_RECEIVED, data);
+        this.emitter.emit(EVENTS.MESSAGE_RECEIVED, comment);
       }
     } catch (err) {
       this.errorHandler.handleError(err, 'Comment.fetchLatestMessage');

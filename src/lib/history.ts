@@ -8,10 +8,10 @@ import {
 } from '@solarpunkltd/comment-system';
 
 import { fetchMessagesInRange } from '../utils/bee';
+import { indexStrToBigint } from '../utils/common';
 import { ErrorHandler } from '../utils/error';
 import { EventEmitter } from '../utils/eventEmitter';
 import { Logger } from '../utils/logger';
-import { validateUserSignature } from '../utils/validation';
 
 import { COMMENTS_TO_READ, EVENTS, FEED_INDEX_ZERO } from './constants';
 
@@ -34,11 +34,11 @@ export class SwarmHistory {
         return;
       }
 
-      const { data, index } = await this.fetchLatestMessage();
+      const { data: comment, index } = await this.fetchLatestMessage();
 
       if (!index.equals(FeedIndex.MINUS_ONE)) {
         this.logger.debug(`history latest index: ${index.toBigInt()}`);
-        this.emitter.emit(EVENTS.MESSAGE_RECEIVED, data);
+        this.emitter.emit(EVENTS.MESSAGE_RECEIVED, comment);
       }
 
       this.startIndex = index.toBigInt();
@@ -78,35 +78,31 @@ export class SwarmHistory {
       this.reactionOptions,
     );
 
-    if (reactionState.nextIndex === FeedIndex.MINUS_ONE.toString()) {
+    const nextIxBigInt = indexStrToBigint(reactionState.nextIndex);
+    if (!nextIxBigInt || nextIxBigInt < 0n || FeedIndex.fromBigInt(nextIxBigInt).equals(FeedIndex.MINUS_ONE)) {
       return FEED_INDEX_ZERO;
     }
 
-    if (prevIndex !== undefined && new FeedIndex(reactionState.nextIndex).toBigInt() > prevIndex + 1n) {
+    if (prevIndex !== undefined && nextIxBigInt > prevIndex + 1n) {
       for (let ix = 0; ix < reactionState.messages.length; ix++) {
-        const r = reactionState.messages[ix];
-
-        this.emitter.emit(EVENTS.MESSAGE_RECEIVED, r);
+        const reaction = reactionState.messages[ix];
+        this.emitter.emit(EVENTS.MESSAGE_RECEIVED, reaction);
       }
     }
 
-    return new FeedIndex(reactionState.nextIndex);
+    return FeedIndex.fromBigInt(nextIxBigInt);
   }
 
   public async fetchLatestMessage(): Promise<{ data: MessageData; index: FeedIndex }> {
     const latestComment = await readSingleComment(undefined, this.commentOptions);
 
-    if (!latestComment) {
+    const parsedIx = indexStrToBigint(latestComment?.index);
+    if (!latestComment || !parsedIx) {
       this.logger.debug(`No comment found in history`);
       return { data: {} as MessageData, index: FeedIndex.MINUS_ONE };
     }
 
-    if (!validateUserSignature(latestComment)) {
-      this.logger.warn('Invalid signature during fetching');
-      return { data: {} as MessageData, index: FeedIndex.MINUS_ONE };
-    }
-
-    return { data: latestComment, index: new FeedIndex(latestComment.index) };
+    return { data: latestComment, index: FeedIndex.fromBigInt(parsedIx) };
   }
 
   public hasPreviousMessages(): boolean {

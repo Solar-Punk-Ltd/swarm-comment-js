@@ -5,7 +5,6 @@ import { EVENTS } from '../lib/constants';
 
 import { EventEmitter } from './eventEmitter';
 import { Logger } from './logger';
-import { validateUserSignature } from './validation';
 
 const logger = Logger.getInstance();
 
@@ -29,13 +28,7 @@ export async function fetchMessagesInRange(
   }
 
   for (let ix = 0; ix < comments.length; ix++) {
-    const c = comments[ix];
-
-    if (!validateUserSignature(c)) {
-      logger.warn('Invalid signature detected:', c);
-      continue;
-    }
-
-    emitter.emit(EVENTS.MESSAGE_RECEIVED, c);
+    const comment = comments[ix];
+    emitter.emit(EVENTS.MESSAGE_RECEIVED, comment);
   }
 }
