@@ -37,3 +37,17 @@ export async function retryAwaitableAsync<T>(
       });
   });
 }
+
+// Helper function to safely parse index string that could be decimal or hex because of the legacy or decimal conversion sometimes the index is stored as decimal
+export const indexStrToBigint = (indexStr?: string): bigint | undefined => {
+  if (!indexStr) {
+    return undefined;
+  }
+
+  const isHex = /[a-fA-F]/.test(indexStr) || indexStr.startsWith('0') || indexStr.length > 10;
+  if (isHex) {
+    return BigInt(parseInt(indexStr, 16));
+  }
+
+  return BigInt(parseInt(indexStr, 10));
+};

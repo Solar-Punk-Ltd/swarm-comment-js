@@ -1,9 +1,10 @@
-import { Bee, EthAddress, FeedIndex, PrivateKey, Topic } from '@ethersphere/bee-js';
+import { EthAddress, FeedIndex, PrivateKey, Topic, UploadResult } from '@ethersphere/bee-js';
 import {
   getPrivateKeyFromIdentifier,
   getReactionFeedId,
   MessageData,
   MessageType,
+  Options,
   readSingleComment,
   updateReactions,
   writeCommentToIndex,
@@ -11,23 +12,28 @@ import {
 } from '@solarpunkltd/comment-system';
 import { v4 as uuidv4 } from 'uuid';
 
-import { CommentSettings, CommentSettingsSwarm, CommentSettingsUser } from '../interfaces';
-import { remove0x, retryAwaitableAsync } from '../utils/common';
+import { CommentSettings, CommentSettingsUser, PreloadOptions } from '../interfaces';
+import { fetchMessagesInRange } from '../utils/bee';
+import { indexStrToBigint, remove0x, retryAwaitableAsync } from '../utils/common';
 import { ErrorHandler } from '../utils/error';
 import { EventEmitter } from '../utils/eventEmitter';
+import { Logger } from '../utils/logger';
 
-import { EVENTS } from './constants';
+import { DEFAULT_POLL_INTERVAL, EVENTS, FEED_INDEX_ZERO, MINIMUM_POLL_INTERVAL, PLACEHOLDER_STAMP } from './constants';
 import { SwarmHistory } from './history';
 
 export class SwarmComment {
+  private logger = Logger.getInstance();
+  private errorHandler = ErrorHandler.getInstance();
+
   private emitter: EventEmitter;
   private history: SwarmHistory;
   private userDetails: CommentSettingsUser;
-  private swarmSettings: CommentSettingsSwarm;
-
+  private commentOptions: Options;
+  private reactionOptions: Options;
   private signer: PrivateKey;
-
-  private errorHandler = ErrorHandler.getInstance();
+  private topic: string;
+  private pollInterval: number;
 
   private fetchProcessRunning = false;
   private stopFetch = false;
@@ -35,30 +41,47 @@ export class SwarmComment {
   private isSending = false;
 
   constructor(settings: CommentSettings) {
-    const signer = new PrivateKey(remove0x(settings.user.privateKey));
     this.emitter = new EventEmitter();
 
+    const userSigner = new PrivateKey(remove0x(settings.user.privateKey));
     this.userDetails = {
       privateKey: settings.user.privateKey,
-      ownAddress: signer.publicKey().address().toString(),
+      ownAddress: userSigner.publicKey().address().toString(),
       nickname: settings.user.nickname,
       ownIndex: -1n,
     };
 
+    this.pollInterval = settings.infra.pollInterval || DEFAULT_POLL_INTERVAL;
+    if (this.pollInterval < MINIMUM_POLL_INTERVAL) {
+      this.logger.debug('pollInterval updated to the minimum: ', MINIMUM_POLL_INTERVAL);
+      this.pollInterval = MINIMUM_POLL_INTERVAL;
+    }
+
     this.signer = getPrivateKeyFromIdentifier(settings.infra.topic);
-    this.swarmSettings = {
-      bee: new Bee(settings.infra.beeUrl),
-      beeUrl: settings.infra.beeUrl,
-      stamp: settings.infra.stamp || '0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef', // placeholder stamp if smart gateway is used
-      topic: settings.infra.topic,
+    this.topic = Topic.fromString(settings.infra.topic).toString();
+
+    this.commentOptions = {
+      identifier: this.topic,
       address: this.signer.publicKey().address().toString(),
+      beeApiUrl: settings.infra.beeUrl,
+      stamp: settings.infra.stamp || PLACEHOLDER_STAMP,
+      signer: this.signer,
     };
 
-    this.history = new SwarmHistory(this.swarmSettings, this.emitter);
+    const reactionFeedId = getReactionFeedId(this.topic).toString();
+    this.reactionOptions = {
+      identifier: reactionFeedId,
+      address: this.signer.publicKey().address().toString(),
+      beeApiUrl: settings.infra.beeUrl,
+      stamp: settings.infra.stamp || PLACEHOLDER_STAMP,
+      signer: this.signer,
+    };
+
+    this.history = new SwarmHistory(this.commentOptions, this.reactionOptions, this.emitter);
   }
 
-  public start(): void {
-    this.init();
+  public start(options?: PreloadOptions): void {
+    this.init(options);
     this.startMessagesFetchProcess();
   }
 
@@ -66,6 +89,8 @@ export class SwarmComment {
     this.emitter.cleanAll();
     this.stopMessagesFetchProcess();
     this.history.cleanup();
+    this.reactionIndex = -1n;
+    this.fetchProcessRunning = false;
   }
 
   public getEmitter(): EventEmitter {
@@ -87,7 +112,7 @@ export class SwarmComment {
       id: id || uuidv4(),
       username: this.userDetails.nickname,
       address: this.userDetails.ownAddress,
-      topic: Topic.fromString(this.swarmSettings.topic).toString(),
+      topic: this.topic,
       signature: this.getSignature(message),
       timestamp: Date.now(),
       type,
@@ -102,23 +127,19 @@ export class SwarmComment {
         // to avoid indexing issues, note: it slows down the sending process
         await this.fetchLatestReactions();
 
-        const reactionFeedId = getReactionFeedId(Topic.fromString(this.swarmSettings.topic).toString()).toString();
         const reactionNextIndex =
-          this.reactionIndex === -1n ? FeedIndex.fromBigInt(0n) : FeedIndex.fromBigInt(this.reactionIndex + 1n);
+          this.reactionIndex === -1n ? FEED_INDEX_ZERO : FeedIndex.fromBigInt(this.reactionIndex + 1n);
         messageObj = {
           ...messageObj,
-          index: Number(reactionNextIndex),
+          index: reactionNextIndex.toString(),
         };
 
         const newReactionState = updateReactions(prevState || [], messageObj) || [];
         this.isSending = true;
 
-        await writeReactionsToIndex(newReactionState, reactionNextIndex, {
-          stamp: this.swarmSettings.stamp,
-          signer: this.signer,
-          identifier: reactionFeedId,
-          beeApiUrl: this.swarmSettings.beeUrl,
-        });
+        const res = await writeReactionsToIndex(newReactionState, reactionNextIndex, this.reactionOptions);
+
+        await this.verifyWriteSuccess(reactionNextIndex, res);
 
         this.reactionIndex = reactionNextIndex.toBigInt();
       } else {
@@ -128,18 +149,13 @@ export class SwarmComment {
         const nextIndex = this.userDetails.ownIndex === -1n ? 0n : this.userDetails.ownIndex + 1n;
         messageObj = {
           ...messageObj,
-          index: Number(nextIndex),
+          index: FeedIndex.fromBigInt(nextIndex).toString(),
         };
         this.isSending = true;
 
-        const comment = await writeCommentToIndex(messageObj, FeedIndex.fromBigInt(BigInt(nextIndex)), {
-          stamp: this.swarmSettings.stamp,
-          signer: this.signer,
-          identifier: Topic.fromString(this.swarmSettings.topic).toString(),
-          beeApiUrl: this.swarmSettings.beeUrl,
-        });
+        const res = await writeCommentToIndex(messageObj, FeedIndex.fromBigInt(nextIndex), this.commentOptions);
 
-        await this.verifyWriteSuccess(FeedIndex.fromBigInt(BigInt(nextIndex)), comment);
+        await this.verifyWriteSuccess(FeedIndex.fromBigInt(nextIndex), res, messageObj);
 
         this.userDetails.ownIndex = nextIndex;
       }
@@ -163,17 +179,19 @@ export class SwarmComment {
     }
   }
 
-  private async init(): Promise<void> {
+  private async init(options?: PreloadOptions): Promise<void> {
     try {
       this.emitter.emit(EVENTS.LOADING_INIT, true);
 
-      const [ownIndexResult] = await Promise.allSettled([this.initOwnIndex(), this.history.init()]);
+      const [ownIndexResult] = await Promise.allSettled([
+        this.initOwnIndex(options?.latestIndex),
+        this.history.init(options?.firstIndex),
+        this.initReactionIndex(options?.reactionIndex),
+      ]);
 
       if (ownIndexResult.status === 'rejected') {
         throw ownIndexResult.reason;
       }
-
-      await this.fetchLatestReactions();
 
       this.emitter.emit(EVENTS.LOADING_INIT, false);
     } catch (error) {
@@ -182,35 +200,58 @@ export class SwarmComment {
     }
   }
 
-  // TODO: fetch latest index and comment and start to load prev from there
-  private async initOwnIndex(): Promise<void> {
+  private async initOwnIndex(latestIndex?: bigint): Promise<void> {
+    if (latestIndex !== undefined) {
+      this.userDetails.ownIndex = latestIndex;
+      this.logger.debug(`OwnIndex set due to preloading: ${this.userDetails.ownIndex}`);
+    }
+
     const RETRY_COUNT = 10;
     const DELAY = 1000;
 
     const comment = await retryAwaitableAsync(
-      () =>
-        readSingleComment(undefined, {
-          identifier: Topic.fromString(this.swarmSettings.topic).toString(),
-          address: this.swarmSettings.address,
-          beeApiUrl: this.swarmSettings.beeUrl,
-        }),
+      () => readSingleComment(undefined, this.commentOptions),
       RETRY_COUNT,
       DELAY,
     );
 
-    if (comment?.message?.index) {
-      this.userDetails.ownIndex = BigInt(comment.message.index);
+    const parsedIx = indexStrToBigint(comment?.index);
+
+    if (
+      parsedIx &&
+      !FeedIndex.fromBigInt(parsedIx).equals(FeedIndex.MINUS_ONE) &&
+      parsedIx > this.userDetails.ownIndex
+    ) {
+      const prevOwnIndex = this.userDetails.ownIndex;
+      this.userDetails.ownIndex = parsedIx;
+      this.logger.debug(
+        `OwnIndex updated from ${prevOwnIndex} as new message(s) found since preloading: ${parsedIx}, fetching them...`,
+      );
+
+      await fetchMessagesInRange(prevOwnIndex + 1n, parsedIx, this.emitter, this.commentOptions);
     }
+  }
+
+  private async initReactionIndex(reactionIndex?: bigint): Promise<void> {
+    if (reactionIndex === undefined) {
+      return await this.fetchLatestReactions();
+    }
+
+    this.reactionIndex = reactionIndex;
   }
 
   private async fetchLatestMessage(): Promise<void> {
     if (this.isSending) return;
 
     try {
-      const { data, index } = await this.history.fetchLatestMessage();
+      const { data: comment, index } = await this.history.fetchLatestMessage();
 
-      this.userDetails.ownIndex = index.toBigInt();
-      this.emitter.emit(EVENTS.MESSAGE_RECEIVED, data);
+      if (!index.equals(FeedIndex.MINUS_ONE) && this.userDetails.ownIndex < index.toBigInt()) {
+        this.userDetails.ownIndex = index.toBigInt();
+        this.logger.debug(`OwnIndex updated to: ${this.userDetails.ownIndex.toString()}`);
+
+        this.emitter.emit(EVENTS.MESSAGE_RECEIVED, comment);
+      }
     } catch (err) {
       this.errorHandler.handleError(err, 'Comment.fetchLatestMessage');
     }
@@ -219,7 +260,7 @@ export class SwarmComment {
   private async fetchLatestReactions(index?: bigint): Promise<void> {
     try {
       const reactionNextIndex = (await this.history.fetchLatestReactionState(index, this.reactionIndex)).toBigInt();
-      if (reactionNextIndex > this.reactionIndex) {
+      if (reactionNextIndex - 1n > this.reactionIndex) {
         this.reactionIndex = reactionNextIndex - 1n;
       }
     } catch (err) {
@@ -227,24 +268,28 @@ export class SwarmComment {
     }
   }
 
-  private async verifyWriteSuccess(index: FeedIndex, comment?: MessageData): Promise<void> {
-    if (!comment) {
-      throw new Error('Comment write failed, empty response!');
+  private async verifyWriteSuccess(
+    index: FeedIndex,
+    writeResult: UploadResult | undefined,
+    data?: MessageData,
+  ): Promise<void> {
+    if (!writeResult) {
+      throw new Error('Write failed, empty response!');
     }
 
-    const commentCheck = await readSingleComment(index, {
-      identifier: Topic.fromString(this.swarmSettings.topic).toString(),
-      address: this.swarmSettings.address,
-      beeApiUrl: this.swarmSettings.beeUrl,
-    });
+    if (!data) {
+      return;
+    }
 
-    if (!commentCheck) {
+    const dataCheck = await readSingleComment(index, this.commentOptions);
+
+    if (!dataCheck) {
       throw new Error('Comment check failed, empty response!');
     }
 
-    if (commentCheck.message.id !== comment.id || commentCheck.message.timestamp !== comment.timestamp) {
-      throw new Error(`comment check failed, expected "${comment.message}", got: "${commentCheck.message.message}".
-                Expected timestamp: ${comment.timestamp}, got: ${commentCheck.message.timestamp}`);
+    if (dataCheck.id !== data.id || dataCheck.timestamp !== data.timestamp) {
+      throw new Error(`Write verification failed, expected "${data.message}", got: "${dataCheck.message}".
+                Expected timestamp: ${data.timestamp}, got: ${dataCheck.timestamp}`);
     }
   }
 
@@ -254,14 +299,14 @@ export class SwarmComment {
     this.fetchProcessRunning = true;
     this.stopFetch = false;
 
-    const poll = async () => {
+    const poll = async (): Promise<void> => {
       if (this.stopFetch) {
         this.fetchProcessRunning = false;
         return;
       }
 
       await Promise.allSettled([this.fetchLatestMessage(), this.fetchLatestReactions(this.reactionIndex + 1n)]);
-      setTimeout(poll, 500);
+      setTimeout(poll, this.pollInterval);
     };
 
     poll();
