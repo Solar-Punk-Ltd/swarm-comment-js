@@ -222,7 +222,8 @@ export class SwarmComment {
       !FeedIndex.fromBigInt(parsedIx).equals(FeedIndex.MINUS_ONE) &&
       parsedIx > this.userDetails.ownIndex
     ) {
-      const prevOwnIndex = this.userDetails.ownIndex;
+      const prevOwnIndex = parsedIx - 8n;
+
       this.userDetails.ownIndex = parsedIx;
       this.logger.debug(
         `OwnIndex updated from ${prevOwnIndex} as new message(s) found since preloading: ${parsedIx}, fetching them...`,

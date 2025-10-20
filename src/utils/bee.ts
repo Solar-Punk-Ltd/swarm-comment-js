@@ -24,8 +24,10 @@ export async function fetchMessagesInRange(
 
   if (!comments) {
     logger.warn('No comments found in the specified range from: ', startIndex.toString(), ' to: ', endIndex.toString());
+    emitter.emit(EVENTS.LOADING_INIT, false);
     return;
   }
+  emitter.emit(EVENTS.LOADING_INIT, false);
 
   for (let ix = 0; ix < comments.length; ix++) {
     const comment = comments[ix];
