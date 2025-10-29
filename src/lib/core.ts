@@ -226,7 +226,7 @@ export class SwarmComment {
     const parsedIx = indexStrToBigint(comment?.index);
 
     if (
-      parsedIx &&
+      parsedIx !== undefined &&
       !FeedIndex.fromBigInt(parsedIx).equals(FeedIndex.MINUS_ONE) &&
       parsedIx > this.userDetails.ownIndex
     ) {

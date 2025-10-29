@@ -79,7 +79,7 @@ export class SwarmHistory {
     );
 
     const nextIxBigInt = indexStrToBigint(reactionState.nextIndex);
-    if (!nextIxBigInt || nextIxBigInt < 0n || FeedIndex.fromBigInt(nextIxBigInt).equals(FeedIndex.MINUS_ONE)) {
+    if (nextIxBigInt === undefined || nextIxBigInt < 0n || FeedIndex.fromBigInt(nextIxBigInt).equals(FeedIndex.MINUS_ONE)) {
       return FEED_INDEX_ZERO;
     }
 
@@ -97,7 +97,7 @@ export class SwarmHistory {
     const latestComment = await readSingleComment(undefined, this.commentOptions);
 
     const parsedIx = indexStrToBigint(latestComment?.index);
-    if (!latestComment || !parsedIx) {
+    if (!latestComment || parsedIx === undefined) {
       this.logger.debug(`No comment found in history`);
       return { data: {} as MessageData, index: FeedIndex.MINUS_ONE };
     }
