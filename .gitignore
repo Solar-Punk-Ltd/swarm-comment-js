@@ -15,6 +15,7 @@ dist-ssr
 *.local
 yalc.lock
 .yalc
+pnpm-workspace.yaml
 
 .vscode/*
 !.vscode/extensions.json

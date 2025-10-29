@@ -19,7 +19,14 @@ import { ErrorHandler } from '../utils/error';
 import { EventEmitter } from '../utils/eventEmitter';
 import { Logger } from '../utils/logger';
 
-import { DEFAULT_POLL_INTERVAL, EVENTS, FEED_INDEX_ZERO, MINIMUM_POLL_INTERVAL, PLACEHOLDER_STAMP } from './constants';
+import {
+  COMMENTS_TO_READ,
+  DEFAULT_POLL_INTERVAL,
+  EVENTS,
+  FEED_INDEX_ZERO,
+  MINIMUM_POLL_INTERVAL,
+  PLACEHOLDER_STAMP,
+} from './constants';
 import { SwarmHistory } from './history';
 
 export class SwarmComment {
@@ -151,6 +158,7 @@ export class SwarmComment {
           ...messageObj,
           index: FeedIndex.fromBigInt(nextIndex).toString(),
         };
+
         this.isSending = true;
 
         const res = await writeCommentToIndex(messageObj, FeedIndex.fromBigInt(nextIndex), this.commentOptions);
@@ -185,7 +193,7 @@ export class SwarmComment {
 
       const [ownIndexResult] = await Promise.allSettled([
         this.initOwnIndex(options?.latestIndex),
-        this.history.init(options?.firstIndex),
+        this.history.init(options?.firstIndex ?? options?.latestIndex),
         this.initReactionIndex(options?.reactionIndex),
       ]);
 
@@ -222,14 +230,14 @@ export class SwarmComment {
       !FeedIndex.fromBigInt(parsedIx).equals(FeedIndex.MINUS_ONE) &&
       parsedIx > this.userDetails.ownIndex
     ) {
-      const prevOwnIndex = parsedIx - 8n;
+      const startIndex = latestIndex === undefined ? parsedIx - COMMENTS_TO_READ : this.userDetails.ownIndex;
 
       this.userDetails.ownIndex = parsedIx;
       this.logger.debug(
-        `OwnIndex updated from ${prevOwnIndex} as new message(s) found since preloading: ${parsedIx}, fetching them...`,
+        `OwnIndex updated from ${startIndex} as new message(s) found since preloading: ${parsedIx}, fetching them...`,
       );
 
-      await fetchMessagesInRange(prevOwnIndex + 1n, parsedIx, this.emitter, this.commentOptions);
+      await fetchMessagesInRange(startIndex + 1n, parsedIx, this.emitter, this.commentOptions);
     }
   }
 
