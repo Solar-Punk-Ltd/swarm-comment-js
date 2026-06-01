@@ -1,6 +1,6 @@
 {
   "name": "@solarpunkltd/swarm-comment-js",
-  "version": "0.0.11",
+  "version": "0.0.12",
   "description": "JS library for commenting on Swarm",
   "main": "dist/index.js",
   "module": "dist/index.esm.js",
@@ -20,24 +20,27 @@
   },
   "author": "balint.ujvari@solarpunk.buzz",
   "scripts": {
+    "prepare": "pnpm run build",
     "build": "tsc && vite build",
-    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "lint:fix": "npm run lint -- --fix",
-    "prepare": "npm run build",
-    "build:mine": "tsc src/scripts/mine.ts --outDir scriptsDist",
-    "mine": "npm run build:mine && node scriptsDist/mine.js"
+    "lint": "eslint . --report-unused-disable-directives --no-cache --max-warnings=5",
+    "lint:fix": "pnpm run lint --fix",
+    "check:types": "tsc -p tsconfig.json --noEmit",
+    "depcheck": "depcheck .",
+    "init:husky": "pnpm husky install"
   },
   "dependencies": {
-    "@ethersphere/bee-js": "^10.1.1",
-    "@solarpunkltd/comment-system": "^1.9.1",
-    "cafe-utility": "^33.3.1",
-    "uuid": "^11.0.3",
-    "zod": "^4.0.15"
+    "@ethersphere/bee-js": "^12.2.1",
+    "@solarpunkltd/comment-system": "^1.9.4",
+    "uuid": "^11.0.3"
   },
   "devDependencies": {
+    "@commitlint/cli": "^20.5.0",
+    "@commitlint/config-conventional": "^20.5.0",
+    "@eslint/js": "^9.32.0",
     "@types/node": "^24.2.0",
     "@typescript-eslint/eslint-plugin": "^8.39.0",
     "@typescript-eslint/parser": "^8.39.0",
+    "depcheck": "^1.4.7",
     "eslint": "^9.32.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-import-resolver-node": "^0.3.9",
@@ -47,15 +50,16 @@
     "eslint-plugin-prettier": "^5.5.4",
     "eslint-plugin-react-refresh": "^0.4.20",
     "eslint-plugin-simple-import-sort": "^12.1.1",
+    "husky": "^9.1.7",
     "prettier": "^3.6.2",
     "typescript": "^5.9.2",
+    "typescript-eslint": "^8.31.0",
     "vite": "^7.1.1",
     "vite-plugin-dts": "^4.5.4",
     "vite-plugin-node-polyfills": "^0.24.0"
   },
   "files": [
-    "dist",
-    "README.md"
+    "dist"
   ],
   "exports": {
     ".": {
@@ -70,5 +74,11 @@
       "not dead",
       "not op_mini all"
     ]
+  },
+  "engines": {
+    "node": ">=24.0.0",
+    "npm": ">=11.0.0",
+    "pnpm": ">=11.0.0",
+    "bee": "2.8.0"
   }
 }
