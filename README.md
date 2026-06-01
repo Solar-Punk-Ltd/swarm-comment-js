@@ -178,3 +178,7 @@ expected index is necessary as a verification of success.
 - [Example React client](https://github.com/Solar-Punk-Ltd/swarm-comment-react-example)
 
 ---
+
+## License
+
+[Apache-2.0](./LICENSE)

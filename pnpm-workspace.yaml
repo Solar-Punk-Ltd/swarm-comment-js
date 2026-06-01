@@ -1,0 +1,5 @@
+allowBuilds:
+  esbuild: true
+  'unrs-resolver': true
+minimumReleaseAgeExclude:
+  - '@solarpunkltd/comment-system@1.9.4'

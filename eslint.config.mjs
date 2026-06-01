@@ -53,9 +53,10 @@ const prettierRecommended = {
 
 export default [
   {
-    ignores: ['**/node_modules/**', '**/dist/**', 'eslint.config.mjs', 'eslint-compat.cjs'],
+    ignores: ['**/node_modules/**', '**/dist/**', 'eslint.config.mjs', 'eslint-compat.cjs', 'commitlint.config.cjs'],
   },
   {
+    files: ['**/*.ts', '**/*.mjs', '**/*.cjs', '**/*.js'],
     settings: {
       'import/resolver': {
         typescript: {
@@ -64,7 +65,7 @@ export default [
       },
     },
     languageOptions: {
-      ecmaVersion: 2020,
+      ecmaVersion: 2022,
       sourceType: 'module',
       parser: tsParser,
       globals: {

@@ -79,7 +79,11 @@ export class SwarmHistory {
     );
 
     const nextIxBigInt = indexStrToBigint(reactionState.nextIndex);
-    if (nextIxBigInt === undefined || nextIxBigInt < 0n || FeedIndex.fromBigInt(nextIxBigInt).equals(FeedIndex.MINUS_ONE)) {
+    if (
+      nextIxBigInt === undefined ||
+      nextIxBigInt < 0n ||
+      FeedIndex.fromBigInt(nextIxBigInt).equals(FeedIndex.MINUS_ONE)
+    ) {
       return FEED_INDEX_ZERO;
     }
 
